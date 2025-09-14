@@ -1,0 +1,549 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="http://java.sun.com/jsf/html"
+      xmlns:f="http://java.sun.com/jsf/core"
+      xmlns:ui="http://java.sun.com/jsf/facelets">
+
+<h:head>
+    <title>File Management</title>
+    <h:outputStylesheet library="css" name="style.css"/>
+    <script type="text/javascript">
+    //<![CDATA[
+        function setCategory(value) {
+            var el = document.getElementById('uploadForm:categoryInput');
+            if (el) { 
+                el.value = value; 
+                el.dispatchEvent(new Event('change'));
+            }
+            hideSuggestions();
+            jsf.ajax.request(el, null, {
+                execute:'uploadForm:categoryInput', 
+                render:'uploadForm:deptInput',
+                onevent: function(data) {
+                    if (data.status === 'success') {
+                        console.log('Category updated successfully');
+                    }
+                }
+            });
+        }
+
+        function setDownloadCategory(value) {
+            var el = document.getElementById('downloadFiltersForm:downloadCategoryFilter');
+            if (el) { 
+                el.value = value; 
+                el.dispatchEvent(new Event('change'));
+            }
+            hideDownloadSuggestions();
+            jsf.ajax.request(el, null, {
+                execute:'downloadFiltersForm:downloadCategoryFilter', 
+                render:'downloadFiltersForm:downloadIpFilter availableFilesList saveAsForm:saveAsContainer',
+                onevent: function(data) {
+                    if (data.status === 'success') {
+                        console.log('Download category updated successfully');
+                    }
+                }
+            });
+        }
+        
+        function toggleView() {
+            var uploadView = document.getElementById('uploadView');
+            var downloadView = document.getElementById('downloadView');
+            var toggleSwitch = document.querySelector('.toggle-switch input');
+            
+            if (toggleSwitch.checked) {
+                uploadView.style.display = 'none';
+                downloadView.style.display = 'block';
+            } else {
+                uploadView.style.display = 'block';
+                downloadView.style.display = 'none';
+            }
+        }
+
+        function hideSuggestions() {
+            setTimeout(function() {
+                var sug = document.getElementById('uploadForm:categorySuggestions');
+                if (sug) { sug.style.display = 'none'; }
+            }, 200);
+        }
+
+        function hideDownloadSuggestions() {
+            setTimeout(function() {
+                var sug = document.getElementById('downloadFiltersForm:downloadCategorySuggestions');
+                if (sug) { sug.style.display = 'none'; }
+            }, 200);
+        }
+
+        function triggerFileInput() {
+            var fileInput = document.getElementById('uploadForm:fileInput');
+            if (fileInput) {
+                fileInput.click();
+            } else {
+                console.error('File input not found');
+            }
+        }
+
+        function chooseDownloadLocation() {
+            var currentPath = document.getElementById('saveAsForm:downloadLocationPath').value;
+            var newPath = prompt('Enter download location path:', currentPath);
+            if (newPath && newPath.trim() !== '') {
+                document.getElementById('saveAsForm:downloadLocationPath').value = newPath.trim();
+                console.log('Download location updated to: ' + newPath.trim());
+            }
+        }
+
+        // COMPLETELY REWRITTEN - File selection function
+        function selectFile(fileName) {
+            console.log('=== selectFile called with: "' + fileName + '" ===');
+            
+            // Clear any existing selection styling
+            var items = document.querySelectorAll('.file-list-item');
+            items.forEach(function(item) {
+                item.classList.remove('selected');
+            });
+            
+            // Add selection styling to clicked item
+            if (event && event.currentTarget) {
+                event.currentTarget.classList.add('selected');
+                console.log('Added selected class to clicked item');
+            }
+            
+            // Set the hidden field value
+            var hiddenInput = document.getElementById('saveAsForm:selectedFileNameHidden');
+            if (hiddenInput) {
+                hiddenInput.value = fileName;
+                console.log('Set hidden input value to: "' + fileName + '"');
+                
+                // Trigger the JSF AJAX request directly
+                jsf.ajax.request(hiddenInput, null, {
+                    execute: 'saveAsForm:selectedFileNameHidden',
+                    render: 'saveAsForm:saveAsContainer',
+                    onevent: function(data) {
+                        if (data.status === 'success') {
+                            console.log('AJAX request completed successfully');
+                            // Update the visible save-as filename field
+                            var saveAsInput = document.getElementById('saveAsForm:saveAsFileName');
+                            if (saveAsInput && saveAsInput.value !== fileName) {
+                                saveAsInput.value = fileName;
+                                console.log('Updated saveAs input to: "' + fileName + '"');
+                            }
+                        } else if (data.status === 'error') {
+                            console.error('AJAX request failed');
+                        }
+                    },
+                    onerror: function(data) {
+                        console.error('AJAX error occurred:', data);
+                    }
+                });
+            } else {
+                console.error('Hidden input field not found!');
+            }
+            
+            console.log('=== selectFile completed ===');
+        }
+
+        function validateDownload() {
+            console.log('=== Validating download ===');
+            debugDownloadState();
+            
+            var fileNameInput = document.getElementById('saveAsForm:saveAsFileName');
+            var locationInput = document.getElementById('saveAsForm:downloadLocationPath');
+            var selectedFileInput = document.getElementById('saveAsForm:selectedFileNameHidden');
+            
+            console.log('File name input:', fileNameInput ? fileNameInput.value : 'NOT FOUND');
+            console.log('Location input:', locationInput ? locationInput.value : 'NOT FOUND');
+            console.log('Selected file input:', selectedFileInput ? selectedFileInput.value : 'NOT FOUND');
+            
+            if (!selectedFileInput || !selectedFileInput.value.trim()) {
+                alert('Please select a file to download first.');
+                return false;
+            }
+            
+            if (!fileNameInput || !fileNameInput.value.trim()) {
+                alert('Please enter a filename to save as.');
+                if (fileNameInput) fileNameInput.focus();
+                return false;
+            }
+            
+            if (!locationInput || !locationInput.value.trim()) {
+                alert('Please specify a download location.');
+                if (locationInput) locationInput.focus();
+                return false;
+            }
+            
+            console.log('Download validation passed');
+            return true;
+        }
+
+        // Enhanced file input change handler
+        function handleFileInputChange() {
+            var fileInput = document.getElementById('uploadForm:fileInput');
+            var fileName = document.getElementById('fileName');
+            
+            if (fileInput && fileName && fileInput.files && fileInput.files.length > 0) {
+                fileName.textContent = fileInput.files[0].name;
+                console.log('Selected file: ' + fileInput.files[0].name);
+            } else if (fileName) {
+                fileName.textContent = 'No file selected';
+            }
+        }
+
+        // Debug helper function
+        function debugDownloadState() {
+            console.log('=== Download Debug Info ===');
+            var selectedInput = document.getElementById('saveAsForm:selectedFileNameHidden');
+            var saveAsInput = document.getElementById('saveAsForm:saveAsFileName');
+            var locationInput = document.getElementById('saveAsForm:downloadLocationPath');
+            
+            console.log('Selected file hidden input:', selectedInput ? '"' + selectedInput.value + '"' : 'NOT FOUND');
+            console.log('Save as filename:', saveAsInput ? '"' + saveAsInput.value + '"' : 'NOT FOUND');
+            console.log('Download location:', locationInput ? '"' + locationInput.value + '"' : 'NOT FOUND');
+            
+            // Check if elements exist
+            console.log('Hidden input exists:', !!selectedInput);
+            console.log('SaveAs input exists:', !!saveAsInput);
+            console.log('Location input exists:', !!locationInput);
+            
+            console.log('=== End Debug Info ===');
+        }
+    //]]>
+    </script>
+</h:head>
+
+<h:body>
+<div class="container">
+    
+    <!-- Messages Panel for Success/Error Messages -->
+    <h:messages id="messages" 
+                globalOnly="true" 
+                styleClass="messages" 
+                errorClass="error-message" 
+                infoClass="success-message" 
+                showDetail="true" 
+                showSummary="false"/>
+    
+    <!-- Header with Toggle Switch -->
+    <div class="header-section">
+        <h1 class="main-title">File Management</h1>
+        <div class="toggle-container">
+            <span class="toggle-label upload-label">Upload</span>
+            <div class="toggle-switch">
+                <input type="checkbox" id="viewToggle" onchange="toggleView()"/>
+                <label for="viewToggle" class="slider"></label>
+            </div>
+            <span class="toggle-label download-label">Download</span>
+        </div>
+    </div>
+
+    <!-- Upload View -->
+    <div id="uploadView" class="view-container">
+        <div class="main-grid">
+            
+            <!-- Left Panel - Operation Selection -->
+            <div class="left-panel">
+                <h:form id="uploadForm" enctype="multipart/form-data">
+                    
+                    <div class="panel-header">
+                        <h3>Select Operation</h3>
+                    </div>
+                    
+                    <!-- Category and Department Row -->
+                    <div class="form-row">
+                        <div class="form-group half-width">
+                            <label class="form-label">Select Operation</label>
+                            <div class="input-container">
+                                <h:inputText id="categoryInput"
+                                             value="#{fileUploadBean.selectedCategory}"
+                                             styleClass="text-input"
+                                             placeholder="Type to search  Operation..."
+                                             onblur="hideSuggestions()">
+                                    <f:ajax event="keyup"
+                                            execute="@this"
+                                            render="categorySuggestions deptInput"
+                                            listener="#{fileUploadBean.suggestCategories}"/>
+                                    <f:ajax event="change"
+                                            execute="@this"
+                                            render="deptInput"
+                                            listener="#{fileUploadBean.populateDeptFromCategory}"/>
+                                </h:inputText>
+
+                                <h:panelGroup id="categorySuggestions"
+                                              style="#{empty fileUploadBean.suggestedCategories ? 'display:none;' : 'display:block;'}"
+                                              styleClass="suggestions">
+                                    <ui:repeat value="#{fileUploadBean.suggestedCategories}" var="c">
+                                        <div class="suggestion" onclick="setCategory('#{c}');">
+                                            #{c}
+                                        </div>
+                                    </ui:repeat>
+                                </h:panelGroup>
+                            </div>
+                        </div>
+
+                        <div class="form-group half-width">
+                            <label class="form-label">Department</label>
+                            <h:inputText id="deptInput"
+                                         value="#{fileUploadBean.selectedDept}"
+                                         styleClass="text-input readonly"
+                                         readonly="true"
+                                         placeholder="IP will auto-populate"/>
+                        </div>
+                    </div>
+
+                    <!-- File Selection -->
+                    <div class="form-group">
+                        <label class="form-label">Select Configuration File</label>
+                        <div class="file-upload-container">
+                            <h:inputFile id="fileInput" 
+                                         value="#{fileUploadBean.filePath}" 
+                                         styleClass="file-input-hidden"
+                                         onchange="handleFileInputChange()"/>
+                            <div class="file-upload-button-large" onclick="triggerFileInput();">
+                                <span class="upload-text-large">Choose File</span>
+                            </div>
+                            <span class="file-name" id="fileName">No file selected</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Execute Button -->
+                    <div class="form-actions">
+                        <h:commandButton value="EXECUTE"
+                                         action="#{fileUploadBean.upload}"
+                                         styleClass="execute-btn upload-btn">
+                            <f:ajax execute="@form" render="@form messages availableFilesList"/>
+                        </h:commandButton>
+                    </div>
+                    
+                </h:form>
+            </div>
+            
+            <!-- Right Panel - Upload Status -->
+            <div class="right-panel">
+                <div class="panel-header">
+                    <h3>Upload Status</h3>
+                </div>
+                
+                <div class="uploaded-files-container">
+                    <h:panelGroup rendered="#{not empty fileUploadBean.uploadedFiles}">
+                        <div class="uploaded-files-list">
+                            <h4>Recently Uploaded Files</h4>
+                            <ui:repeat value="#{fileUploadBean.uploadedFiles}" var="file">
+                                <div class="uploaded-file-item">
+                                    <span class="file-icon">📄</span>
+                                    <div class="file-details">
+                                        <div class="file-name">#{file.name}</div>
+                                        <div class="file-category">#{file.category}</div>
+                                        <div class="file-ip">#{file.ipAddress}</div>
+                                    </div>
+                                </div>
+                            </ui:repeat>
+                        </div>
+                    </h:panelGroup>
+                    
+                    <h:panelGroup rendered="#{empty fileUploadBean.uploadedFiles}">
+                        <div class="no-files-message">
+                            <div class="no-files-icon">📂</div>
+                            <p>No files uploaded yet</p>
+                            <small>Upload a configuration file to see it here</small>
+                        </div>
+                    </h:panelGroup>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Download View -->
+    <div id="downloadView" class="view-container" style="display: none;">
+        <div class="download-grid-simple">
+            
+            <!-- Left Panel - Download Filters and Files List -->
+            <div class="left-panel-wide">
+                <h:form id="downloadFiltersForm">
+                    
+                    <div class="panel-header">
+                        <h3>Download Files</h3>
+                    </div>
+                    
+                    <!-- Category and IP Filter Row -->
+                    <div class="form-row">
+                        <div class="form-group half-width">
+                            <label class="form-label">Filter by Operation</label>
+                            <div class="input-container">
+                                <h:inputText id="downloadCategoryFilter"
+                                             value="#{fileUploadBean.downloadCategoryFilter}"
+                                             styleClass="text-input"
+                                             placeholder="Type to filter Operation..."
+                                             onblur="hideDownloadSuggestions()">
+                                    <f:ajax event="keyup"
+                                            execute="@this"
+                                            render="downloadCategorySuggestions downloadIpFilter availableFilesList"
+                                            listener="#{fileUploadBean.suggestDownloadCategories}"/>
+                                    <f:ajax event="change"
+                                            execute="@this"
+                                            render="downloadIpFilter availableFilesList"
+                                            listener="#{fileUploadBean.populateDownloadDeptFromCategory}"/>
+                                </h:inputText>
+                                
+                                <h:panelGroup id="downloadCategorySuggestions"
+                                              style="#{empty fileUploadBean.downloadSuggestedCategories ? 'display:none;' : 'display:block;'}"
+                                              styleClass="suggestions">
+                                    <ui:repeat value="#{fileUploadBean.downloadSuggestedCategories}" var="c">
+                                        <div class="suggestion" onclick="setDownloadCategory('#{c}');">
+                                            #{c}
+                                        </div>
+                                    </ui:repeat>
+                                </h:panelGroup>
+                            </div>
+                        </div>
+
+                        <div class="form-group half-width">
+                            <label class="form-label">Department</label>
+                            <h:inputText id="downloadIpFilter" 
+                                         value="#{fileUploadBean.ipAddress}"
+                                         styleClass="text-input readonly"
+                                         readonly="true"
+                                         placeholder="IP will auto-populate"/>
+                        </div>
+                    </div>
+
+                </h:form>
+
+                <!-- Available Files List -->
+                <div class="files-section">
+                    <h4>Available Files</h4>
+                    <h:panelGroup id="availableFilesList">
+                        <div class="files-list-container">
+                            <h:panelGroup rendered="#{not empty fileUploadBean.filteredDownloadFiles}">
+                                <div class="files-list-box">
+                                    <ui:repeat value="#{fileUploadBean.filteredDownloadFiles}" var="file">
+                                        <div class="file-list-item" onclick="selectFile('#{file.name}')">
+                                            <div class="file-details">
+                                                <div class="file-name">#{file.name}</div>
+                                                <div class="file-meta">#{file.category}</div>
+                                                <div class="file-ip">#{file.ipAddress}</div>
+                                            </div>
+                                            <div class="file-status">
+                                                <div class="status-indicator available">✓</div>
+                                            </div>
+                                        </div>
+                                    </ui:repeat>
+                                </div>
+                            </h:panelGroup>
+                            
+                            <h:panelGroup rendered="#{empty fileUploadBean.filteredDownloadFiles}">
+                                <div class="no-files-message">
+                                    <div class="no-files-icon">🔍</div>
+                                    <p>No files available</p>
+                                    <small>Upload some files or adjust your filters</small>
+                                </div>
+                            </h:panelGroup>
+                        </div>
+                    </h:panelGroup>
+                </div>
+                
+            </div>
+
+            <!-- Right Panel - Download Options -->
+            <div class="right-panel">
+                <h:form id="saveAsForm">
+                    <div class="panel-header">
+                        <h3>Download Options</h3>
+                    </div>
+                    
+                    <h:panelGroup id="saveAsContainer">
+                        <div class="save-as-container-vertical">
+                            <!-- FIXED: Hidden field without AJAX - This was causing the error -->
+                            <h:inputHidden id="selectedFileNameHidden" 
+                                           value="#{fileUploadBean.selectedFileName}"/>
+                            
+                            <!-- Save As field -->
+                            <div class="form-group">
+                                <label class="form-label">Save As</label>
+                                <h:inputText id="saveAsFileName"
+                                             value="#{fileUploadBean.saveAsFileName}"
+                                             styleClass="text-input save-as-input"
+                                             placeholder="Select a file to download..."
+                                             required="true"
+                                             requiredMessage="File name is required"/>
+                            </div>
+
+                            <!-- Location field with browse button -->
+                            <div class="form-group">
+                                <label class="form-label">Location</label>
+                                <div class="location-container">
+                                    <h:inputText id="downloadLocationPath"
+                                                 value="#{fileUploadBean.downloadLocationPath}"
+                                                 styleClass="text-input location-input"
+                                                 placeholder="D:/Example_Project_Doc/download"
+                                                 required="true"
+                                                 requiredMessage="Download location is required"/>
+                                    <h:commandButton value="..."
+                                                     type="button"
+                                                     styleClass="location-browse-btn"
+                                                     onclick="chooseDownloadLocation(); return false;"/>
+                                </div>
+                            </div>
+                            
+                            <!-- Execute Button -->
+                            <div class="form-actions-vertical">
+                                <h:commandButton value="EXECUTE"
+                                                 action="#{fileUploadBean.executeDownload}"
+                                                 styleClass="execute-btn download-execute-btn"
+                                                 onclick="return validateDownload();">
+                                    <f:ajax execute="@form" render="@form messages availableFilesList"/>
+                                </h:commandButton>
+                            </div>
+                        </div>
+                    </h:panelGroup>
+                </h:form>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+    // Enhanced file input handling
+    document.addEventListener('DOMContentLoaded', function() {
+        var fileInput = document.getElementById('uploadForm:fileInput');
+        var fileName = document.getElementById('fileName');
+        
+        if (fileInput && fileName) {
+            fileInput.addEventListener('change', function() {
+                handleFileInputChange();
+            });
+        }
+        
+        // Initialize download location if empty
+        var downloadLocationInput = document.getElementById('saveAsForm:downloadLocationPath');
+        if (downloadLocationInput && !downloadLocationInput.value.trim()) {
+            downloadLocationInput.value = 'D:\\Example_Project_Doc\\download';
+        }
+        
+        console.log('Page initialization completed');
+    });
+
+    // Enhanced JSF AJAX error handling
+    jsf.ajax.addOnError(function(data) {
+        console.error('JSF AJAX Error:', data);
+        if (data.errorName === 'ViewExpiredException') {
+            alert('Session expired. Please refresh the page.');
+            window.location.reload();
+        }
+    });
+
+    // Session management - keep session alive
+    setInterval(function() {
+        jsf.ajax.request(document.body, null, {
+            execute: '@none',
+            render: '@none'
+        });
+    }, 300000); // 5 minutes
+    
+    // Make debug function globally available
+    window.debugDownloadState = debugDownloadState;
+//]]>
+</script>
+
+</h:body>
+</html>
